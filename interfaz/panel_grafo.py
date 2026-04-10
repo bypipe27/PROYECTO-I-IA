@@ -16,20 +16,21 @@ from PyQt5.QtWidgets import (
 )
 
 
+# Paleta de colores moderna y minimalista
 COLOR_INICIO = QColor("#4CAF50")
-COLOR_OBJETIVO = QColor("#E53935")
-COLOR_VISITADO = QColor("#4A90D9")
-COLOR_ACTUAL = QColor("#FFB300")
+COLOR_OBJETIVO = QColor("#FF5252")
+COLOR_VISITADO = QColor("#42A5F5")
+COLOR_ACTUAL = QColor("#FFB74D")
 COLOR_FRONTERA = QColor("#26C6DA")
-COLOR_BLOQUEADO = QColor("#757575")
-COLOR_DEFAULT = QColor("#546E7A")
-COLOR_BORDE = QColor("#ECEFF1")
-COLOR_ARISTA = QColor("#90A4AE")
-COLOR_FONDO = QColor("#1E272E")
+COLOR_BLOQUEADO = QColor("#90A4AE")
+COLOR_DEFAULT = QColor("#78909C")
+COLOR_BORDE = QColor("#FFFFFF")
+COLOR_ARISTA = QColor("#B0BEC5")
+COLOR_FONDO = QColor("#FAFAFA")
 
-RADIO = 22
-SEPARACION_X = 130
-SEPARACION_Y = 90
+RADIO = 20
+SEPARACION_X = 140
+SEPARACION_Y = 100
 
 
 class NodoItem(QGraphicsEllipseItem):
@@ -37,8 +38,8 @@ class NodoItem(QGraphicsEllipseItem):
         super().__init__(-RADIO, -RADIO, RADIO * 2, RADIO * 2)
         self.setPos(x, y)
         self._label = QGraphicsTextItem(nodo_id, self)
-        self._label.setFont(QFont("Consolas", 11, QFont.Bold))
-        self._label.setDefaultTextColor(Qt.white)
+        self._label.setFont(QFont("Monospace", 11, QFont.Bold))
+        self._label.setDefaultTextColor(Qt.GlobalColor.white)
         rect = self._label.boundingRect()
         self._label.setPos(-rect.width() / 2, -rect.height() / 2)
         self.actualizar_color(color)
@@ -69,7 +70,7 @@ def _dibujar_flecha(scene: QGraphicsScene, x1, y1, x2, y2):
     p2 = QPointF(ex + tam * math.cos(angulo - math.radians(150)), ey + tam * math.sin(angulo - math.radians(150)))
     punta = QGraphicsPolygonItem(QPolygonF([QPointF(ex, ey), p1, p2]))
     punta.setBrush(QBrush(COLOR_ARISTA))
-    punta.setPen(QPen(Qt.NoPen))
+    punta.setPen(QPen(Qt.PenStyle.NoPen))
     scene.addItem(punta)
 
 
@@ -101,95 +102,110 @@ def _calcular_posiciones(grafo: dict) -> dict:
 
 
 class PanelGrafo(QWidget):
-    def __init__(self, titulo: str = "Global Graph – Uninformed Search", parent=None):
+    def __init__(self, titulo: str = "Grafo de búsqueda", parent=None):
         super().__init__(parent)
         self._items = {}
         self._scene = QGraphicsScene()
         self._scene.setBackgroundBrush(QBrush(COLOR_FONDO))
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        
         titulo_lbl = QLabel(titulo)
-        titulo_lbl.setStyleSheet("color: #ECEFF1; font-family: Consolas; font-size: 13px; font-weight: bold;")
+        titulo_lbl.setStyleSheet("color: #212121; font-family: 'Ubuntu'; font-size: 12px; font-weight: bold;")
         layout.addWidget(titulo_lbl)
 
         self._view = QGraphicsView(self._scene)
         self._view.setRenderHint(QPainter.Antialiasing)
-        self._view.setStyleSheet("border: none; background: #1E272E;")
+        self._view.setStyleSheet("border: 1px solid #E0E0E0; background: #FAFAFA;")
         self._view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self._view)
+        
         layout.addWidget(self._crear_leyenda())
         self.mostrar_vacio()
 
     def _crear_leyenda(self):
         lbl = QLabel(
-            "<span style='color:#4CAF50'>⬤</span> Inicio&nbsp;&nbsp;"
-            "<span style='color:#FFB300'>⬤</span> Actual&nbsp;&nbsp;"
-            "<span style='color:#26C6DA'>⬤</span> Frontera&nbsp;&nbsp;"
-            "<span style='color:#4A90D9'>⬤</span> Visitado&nbsp;&nbsp;"
-            "<span style='color:#757575'>⬤</span> Bloqueado&nbsp;&nbsp;"
-            "<span style='color:#E53935'>⬤</span> Objetivo"
+            "<span style='color:#4CAF50'>●</span> Inicio  "
+            "<span style='color:#FFB74D'>●</span> Actual  "
+            "<span style='color:#26C6DA'>●</span> Frontera  "
+            "<span style='color:#42A5F5'>●</span> Visitado  "
+            "<span style='color:#90A4AE'>●</span> Bloqueado  "
+            "<span style='color:#FF5252'>●</span> Objetivo"
         )
-        lbl.setStyleSheet("color: #90A4AE; font-family: Consolas; font-size: 11px;")
-        lbl.setTextFormat(Qt.RichText)
+        lbl.setStyleSheet("color: #616161; font-family: 'Ubuntu'; font-size: 10px; padding: 8px; background: #F5F5F5; border-radius: 4px;")
+        lbl.setTextFormat(Qt.TextFormat.RichText)
         return lbl
 
-    def mostrar_vacio(self, mensaje: str = "Selecciona un algoritmo y pulsa Iniciar"):
+    def mostrar_vacio(self, mensaje: str = "Selecciona algoritmo e inicia"):
         self._scene.clear()
         self._items.clear()
         texto = QGraphicsTextItem(mensaje)
-        texto.setFont(QFont("Consolas", 14, QFont.Bold))
-        texto.setDefaultTextColor(QColor("#B0BEC5"))
+        texto.setFont(QFont("Ubuntu", 13))
+        texto.setDefaultTextColor(QColor("#BDBDBD"))
         texto.setPos(0, 0)
         self._scene.addItem(texto)
-        self._view.fitInView(self._scene.itemsBoundingRect(), Qt.KeepAspectRatio)
+        rect = self._scene.itemsBoundingRect()
+        if rect.isValid():
+            self._view.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
 
     def cargar_grafo(self, grafo: dict, inicio: str, objetivo: str, bloqueados: set):
-        self._scene.clear()
-        self._items.clear()
-        posiciones = _calcular_posiciones(grafo)
+        try:
+            self._scene.clear()
+            self._items.clear()
+            posiciones = _calcular_posiciones(grafo)
 
-        for origen, vecinos in grafo.items():
-            x1, y1 = posiciones[origen]
-            for destino in vecinos:
-                if destino in posiciones:
-                    x2, y2 = posiciones[destino]
-                    _dibujar_flecha(self._scene, x1, y1, x2, y2)
+            for origen, vecinos in grafo.items():
+                x1, y1 = posiciones[origen]
+                for destino in vecinos:
+                    if destino in posiciones:
+                        x2, y2 = posiciones[destino]
+                        _dibujar_flecha(self._scene, x1, y1, x2, y2)
 
-        for nodo, (x, y) in posiciones.items():
-            if nodo == inicio:
-                color = COLOR_INICIO
-            elif nodo == objetivo:
-                color = COLOR_OBJETIVO
-            elif nodo in bloqueados:
-                color = COLOR_BLOQUEADO
-            else:
-                color = COLOR_DEFAULT
+            for nodo, (x, y) in posiciones.items():
+                if nodo == inicio:
+                    color = COLOR_INICIO
+                elif nodo == objetivo:
+                    color = COLOR_OBJETIVO
+                elif nodo in bloqueados:
+                    color = COLOR_BLOQUEADO
+                else:
+                    color = COLOR_DEFAULT
 
-            item = NodoItem(nodo, x, y, color)
-            self._scene.addItem(item)
-            self._items[nodo] = item
+                item = NodoItem(nodo, x, y, color)
+                self._scene.addItem(item)
+                self._items[nodo] = item
 
-        self._view.fitInView(self._scene.itemsBoundingRect(), Qt.KeepAspectRatio)
+            rect = self._scene.itemsBoundingRect()
+            if rect.isValid():
+                self._view.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+        except Exception:
+            pass
 
     def actualizar_nodo(self, nodo_id: str, estado: str):
-        if nodo_id not in self._items:
-            return
-        colores = {
-            "actual": COLOR_ACTUAL,
-            "frontera": COLOR_FRONTERA,
-            "visitado": COLOR_VISITADO,
-            "bloqueado": COLOR_BLOQUEADO,
-            "desbloqueado": COLOR_VISITADO,
-            "inicio": COLOR_INICIO,
-            "objetivo": COLOR_OBJETIVO,
-        }
-        self._items[nodo_id].actualizar_color(colores.get(estado, COLOR_DEFAULT))
+        try:
+            if nodo_id not in self._items:
+                return
+            colores = {
+                "actual": COLOR_ACTUAL,
+                "frontera": COLOR_FRONTERA,
+                "visitado": COLOR_VISITADO,
+                "bloqueado": COLOR_BLOQUEADO,
+                "desbloqueado": COLOR_VISITADO,
+                "inicio": COLOR_INICIO,
+                "objetivo": COLOR_OBJETIVO,
+            }
+            self._items[nodo_id].actualizar_color(colores.get(estado, COLOR_DEFAULT))
+        except Exception:
+            pass
 
     def marcar_camino(self, camino):
         if not camino:
             return
-        for nodo in camino[1:-1]:
-            if nodo in self._items:
-                self._items[nodo].actualizar_color(COLOR_VISITADO)
+        try:
+            for nodo in camino[1:-1]:
+                if nodo in self._items:
+                    self._items[nodo].actualizar_color(COLOR_VISITADO)
+        except Exception:
+            pass
