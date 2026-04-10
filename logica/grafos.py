@@ -1,7 +1,5 @@
 import random
 import string
-from collections import deque
-import time
 
 # =========================
 # 1. GENERAR GRAFO DAG MEJORADO (11 nodos)
@@ -69,70 +67,7 @@ def generar_bloqueados(grafo, inicio, objetivo, max_bloqueados=5):
     return bloqueados
 
 # =========================
-# 3. BFS CON DETECCIÓN DE BLOQUEADOS
-# =========================
-def bfs(grafo, inicio, objetivo, bloqueados):
-    """
-    BFS estándar con métricas detalladas
-    """
-    cola = deque()
-    cola.append((inicio, [inicio], 0))  # nodo, camino, profundidad
-    visitados = set()
-    
-    # MÉTRICAS
-    nodos_expandidos = 0
-    max_profundidad = 0
-    nodos_bloqueados_encontrados = []
-    
-    inicio_tiempo = time.time()
-    
-    while cola:
-        nodo, camino, profundidad = cola.popleft()
-        
-        if nodo in visitados:
-            continue
-        
-        visitados.add(nodo)
-        nodos_expandidos += 1
-        max_profundidad = max(max_profundidad, profundidad)
-        
-        print(f"Expandiendo: {nodo} | Profundidad: {profundidad} | Cola: {len(cola)}")
-        
-        # META
-        if nodo == objetivo:
-            fin_tiempo = time.time()
-            return {
-                "camino": camino,
-                "nodos_expandidos": nodos_expandidos,
-                "profundidad": max_profundidad,
-                "tiempo": fin_tiempo - inicio_tiempo,
-                "bloqueados_encontrados": nodos_bloqueados_encontrados,
-                "exito": True
-            }
-        
-        # EXPANSIÓN
-        for vecino in grafo[nodo]:
-            if vecino in bloqueados:
-                print(f"⚠️  Nodo bloqueado detectado: {vecino}")
-                if vecino not in nodos_bloqueados_encontrados:
-                    nodos_bloqueados_encontrados.append(vecino)
-                continue  # NO lo expandimos
-            
-            if vecino not in visitados:
-                cola.append((vecino, camino + [vecino], profundidad + 1))
-    
-    fin_tiempo = time.time()
-    return {
-        "camino": None,
-        "nodos_expandidos": nodos_expandidos,
-        "profundidad": max_profundidad,
-        "tiempo": fin_tiempo - inicio_tiempo,
-        "bloqueados_encontrados": nodos_bloqueados_encontrados,
-        "exito": False
-    }
-
-# =========================
-# 4. ANÁLISIS DEL GRAFO
+# 3. ANÁLISIS DEL GRAFO
 # # =========================
 # def analizar_grafo(grafo):
 #     """
@@ -168,7 +103,7 @@ def bfs(grafo, inicio, objetivo, bloqueados):
 #     print(f"Densidad promedio: {total_aristas / len(grafo):.2f} aristas/nodo")
 
 # =========================
-# 5. VISUALIZACIÓN DEL GRAFO
+# 4. VISUALIZACIÓN DEL GRAFO
 # =========================
 def visualizar_grafo(grafo, bloqueados=None, camino=None):
     """
@@ -188,7 +123,7 @@ def visualizar_grafo(grafo, bloqueados=None, camino=None):
         print(f"{nodo}{decorador} → {vecinos_str}")
 
 # =========================
-# 6. EJECUCIÓN PRINCIPAL
+# 5. EJECUCIÓN PRINCIPAL
 # =========================
 if __name__ == "__main__":
     
@@ -209,6 +144,8 @@ if __name__ == "__main__":
     # Visualizar grafo
     visualizar_grafo(grafo, bloqueados)
     
+    from logica.busqueda import bfs
+
     # Ejecutar BFS
     print("\n" + "=" * 60)
     print("EJECUTANDO BFS")

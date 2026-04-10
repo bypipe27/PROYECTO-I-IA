@@ -19,6 +19,8 @@ from PyQt5.QtWidgets import (
 COLOR_INICIO = QColor("#4CAF50")
 COLOR_OBJETIVO = QColor("#E53935")
 COLOR_VISITADO = QColor("#4A90D9")
+COLOR_ACTUAL = QColor("#FFB300")
+COLOR_FRONTERA = QColor("#26C6DA")
 COLOR_BLOQUEADO = QColor("#757575")
 COLOR_DEFAULT = QColor("#546E7A")
 COLOR_BORDE = QColor("#ECEFF1")
@@ -118,10 +120,13 @@ class PanelGrafo(QWidget):
         self._view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self._view)
         layout.addWidget(self._crear_leyenda())
+        self.mostrar_vacio()
 
     def _crear_leyenda(self):
         lbl = QLabel(
             "<span style='color:#4CAF50'>⬤</span> Inicio&nbsp;&nbsp;"
+            "<span style='color:#FFB300'>⬤</span> Actual&nbsp;&nbsp;"
+            "<span style='color:#26C6DA'>⬤</span> Frontera&nbsp;&nbsp;"
             "<span style='color:#4A90D9'>⬤</span> Visitado&nbsp;&nbsp;"
             "<span style='color:#757575'>⬤</span> Bloqueado&nbsp;&nbsp;"
             "<span style='color:#E53935'>⬤</span> Objetivo"
@@ -129,6 +134,16 @@ class PanelGrafo(QWidget):
         lbl.setStyleSheet("color: #90A4AE; font-family: Consolas; font-size: 11px;")
         lbl.setTextFormat(Qt.RichText)
         return lbl
+
+    def mostrar_vacio(self, mensaje: str = "Selecciona un algoritmo y pulsa Iniciar"):
+        self._scene.clear()
+        self._items.clear()
+        texto = QGraphicsTextItem(mensaje)
+        texto.setFont(QFont("Consolas", 14, QFont.Bold))
+        texto.setDefaultTextColor(QColor("#B0BEC5"))
+        texto.setPos(0, 0)
+        self._scene.addItem(texto)
+        self._view.fitInView(self._scene.itemsBoundingRect(), Qt.KeepAspectRatio)
 
     def cargar_grafo(self, grafo: dict, inicio: str, objetivo: str, bloqueados: set):
         self._scene.clear()
@@ -162,6 +177,8 @@ class PanelGrafo(QWidget):
         if nodo_id not in self._items:
             return
         colores = {
+            "actual": COLOR_ACTUAL,
+            "frontera": COLOR_FRONTERA,
             "visitado": COLOR_VISITADO,
             "bloqueado": COLOR_BLOQUEADO,
             "desbloqueado": COLOR_VISITADO,
@@ -169,3 +186,10 @@ class PanelGrafo(QWidget):
             "objetivo": COLOR_OBJETIVO,
         }
         self._items[nodo_id].actualizar_color(colores.get(estado, COLOR_DEFAULT))
+
+    def marcar_camino(self, camino):
+        if not camino:
+            return
+        for nodo in camino[1:-1]:
+            if nodo in self._items:
+                self._items[nodo].actualizar_color(COLOR_VISITADO)
