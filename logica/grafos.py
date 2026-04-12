@@ -1,70 +1,114 @@
 import random
 import string
+from collections import deque
 
-# =========================
-# 1. GENERAR GRAFO DAG MEJORADO (11 nodos)
-# =========================
-def generar_grafo_dag(n=11, densidad=0.3):
+
+# =============================================================================
+# 1. GENERAR GRAFO DAG DESAFIANTE
+# =============================================================================
+def generar_grafo_dag(n=13, densidad=0.45):
+    """
+    Genera un grafo dirigido acíclico (DAG) aleatorio con estructura
+    desafiante para el Escape Room Solver.
+
+    Parámetros ajustados respecto a la versión anterior:
+      - n=13 en lugar de 11: más nodos dan más recorrido al BFS/DFS y
+        permiten que haya más nodos bloqueados sin agotar el grafo.
+      - densidad=0.45 en lugar de 0.3: más aristas cruzadas crean
+        rutas alternativas que hacen visible la diferencia entre BFS y
+        DFS, y obligan al algoritmo a decidir qué camino explorar primero.
+
+    Estructura de construcción (4 pasos garantizan conectividad y desafío):
+      1. Camino troncal A→B→...→M: garantiza que siempre exista al
+         menos un camino completo de inicio a fin.
+      2. Atajos largos (salto 2-5): crean rutas cortas que BFS puede
+         preferir sobre el camino troncal.
+      3. Aristas cruzadas densas: aumentan las bifurcaciones que el
+         algoritmo debe evaluar.
+      4. Aristas de rescate: evitan que nodos intermedios queden como
+         callejones sin salida, lo que haría el grafo trivial.
+    """
     nodos = list(string.ascii_uppercase[:n])
     grafo = {nodo: [] for nodo in nodos}
-    
-    # PASO 1: Crear camino principal desde A hasta K
+
+    # PASO 1: camino troncal — garantiza que siempre haya solución
     for i in range(len(nodos) - 1):
         grafo[nodos[i]].append(nodos[i + 1])
-    
-    # PASO 2: Agregar aristas adicionales (solo hacia adelante, evita ciclos)
+
+    # PASO 2: atajos largos hacia adelante (salto de 2 a 5 posiciones)
+    # Permiten rutas alternativas más cortas en número de saltos
     for i in range(len(nodos) - 1):
-        # Calcular cuántos saltos adelante puede alcanzar
-        max_salto = min(len(nodos) - i - 1, 4)  # Máximo 4 niveles adelante
-        
-        # Determinar número de aristas adicionales
-        num_aristas_extra = random.randint(0, 2)
-        
-        for _ in range(num_aristas_extra):
-            # Saltar al menos 2 posiciones (para crear atajos interesantes)
+        max_salto = min(len(nodos) - i - 1, 5)
+        for _ in range(random.randint(0, 3)):
             if max_salto >= 2:
-                salto = random.randint(2, max_salto)
+                salto   = random.randint(2, max_salto)
                 destino = nodos[i + salto]
-                
-                # Agregar solo si no existe ya (evitar duplicados)
                 if destino not in grafo[nodos[i]]:
                     grafo[nodos[i]].append(destino)
-    
-    # PASO 3: Agregar algunas conexiones cruzadas para densidad
+
+    # PASO 3: aristas cruzadas con mayor densidad
+    # Crean bifurcaciones que hacen más visible el comportamiento del
+    # algoritmo de búsqueda al elegir qué camino explorar primero
     for i in range(len(nodos) - 2):
         if random.random() < densidad:
-            # Conectar a un nodo en el "siguiente nivel"
-            posibles = [nodos[j] for j in range(i + 2, min(i + 5, len(nodos)))]
+            posibles = [nodos[j] for j in range(i + 2, min(i + 6, len(nodos)))]
             if posibles:
                 destino = random.choice(posibles)
                 if destino not in grafo[nodos[i]]:
                     grafo[nodos[i]].append(destino)
-    
-    # PASO 4: Asegurar que ningún nodo intermedio quede como sumidero
-    # (excepto el último)
+
+    # PASO 4: aristas de rescate — ningún nodo intermedio sin salida
     for i in range(len(nodos) - 1):
         if not grafo[nodos[i]]:
-            # Si un nodo no tiene salidas, conectarlo al siguiente
             grafo[nodos[i]].append(nodos[i + 1])
-    
-    inicio = nodos[0]
-    objetivo = nodos[-1]
-    
-    return grafo, inicio, objetivo
 
-# =========================
-# 2. NODOS BLOQUEADOS (2 a 5) - MEJORADO
-# =========================
+    return grafo, nodos[0], nodos[-1]
+
+
+# =============================================================================
+# 2. GENERAR NODOS BLOQUEADOS DE FORMA ESTRATÉGICA
+# =============================================================================
 def generar_bloqueados(grafo, inicio, objetivo, max_bloqueados=5):
-    
-    nodos = list(grafo.keys())
+    """
+    Selecciona nodos bloqueados de forma estratégica para maximizar el
+    desafío y la visibilidad de las funcionalidades del proyecto.
+
+    Cambios respecto a la versión anterior (random.sample puro):
+      - Se identifican los nodos con mayor tráfico entrante (in-degree),
+        es decir, aquellos a los que llegan más aristas. Bloquear estos
+        nodos obliga al algoritmo a resolver más puzzles antes de avanzar,
+        ya que son cruces importantes del grafo.
+      - Se garantiza que al menos la mitad de los bloqueados sean nodos
+        de alto tráfico, haciendo los puzzles más relevantes para la
+        búsqueda global.
+      - Se mantiene un mínimo de 3 y un máximo de 5 bloqueados para
+        que siempre haya suficiente actividad de A* visible.
+    """
+    nodos      = list(grafo.keys())
     candidatos = [n for n in nodos if n != inicio and n != objetivo]
-    
-    # Evitar bloquear demasiados nodos críticos
-    cantidad = random.randint(2, min(max_bloqueados, len(candidatos) // 2))
-    bloqueados = set(random.sample(candidatos, cantidad))
-    
-    return bloqueados
+
+    # Calcular in-degree de cada nodo candidato
+    in_degree = {n: 0 for n in candidatos}
+    for origen in grafo:
+        for destino in grafo[origen]:
+            if destino in in_degree:
+                in_degree[destino] += 1
+
+    # Separar candidatos en alta prioridad (≥2 aristas entrantes) y resto
+    alta_prioridad = [n for n, d in in_degree.items() if d >= 2]
+    resto          = [n for n in candidatos if n not in alta_prioridad]
+
+    cantidad = random.randint(3, min(max_bloqueados, len(candidatos) // 2))
+
+    # Garantizar al menos la mitad de los bloqueados con alto tráfico
+    n_alta = min(len(alta_prioridad), max(cantidad // 2, 1))
+    elegidos_alta = random.sample(alta_prioridad, n_alta) if alta_prioridad else []
+
+    # Completar con nodos del resto si hacen falta
+    n_resto  = cantidad - len(elegidos_alta)
+    elegidos_resto = random.sample(resto, min(n_resto, len(resto))) if resto else []
+
+    return set(elegidos_alta + elegidos_resto)
 
 # =========================
 # 3. ANÁLISIS DEL GRAFO

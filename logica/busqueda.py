@@ -21,31 +21,140 @@ def _resultado(camino, nodos_expandidos, max_profundidad, inicio_tiempo,
 
 
 def _crear_subproblema(nodo_bloqueado):
+	"""
+	Genera un subgrafo aleatorio único para el acertijo de cada nodo bloqueado.
+
+	Antes, todos los subgrafos tenían exactamente la misma estructura:
+	4 nodos fijos con 2 rutas paralelas. Eso hacía que el panel A* siempre
+	se viera igual sin importar qué nodo se estaba desbloqueando.
+
+	Ahora cada subgrafo se genera de forma aleatoria con:
+	  - Entre 2 y 4 nodos intermedios (distinto número cada vez)
+	  - Aristas aleatorias hacia adelante entre intermedios (estructura libre)
+	  - Costos aleatorios entre 1 y 6 en cada arista
+	  - Se garantiza que el objetivo siempre es alcanzable desde el inicio,
+	    conectando en cadena los nodos y luego añadiendo aristas extra al azar
+
+	Esto hace que cada puzzle sea visualmente distinto y conceptualmente
+	propio del nodo que lo generó, cumpliendo con el requisito del proyecto
+	de que cada nodo bloqueado tenga su propio subespacio de estados.
+
+	Usamos random.seed basado en el nombre del nodo para que el mismo nodo
+	bloqueado siempre genere el mismo puzzle dentro de una misma ejecución,
+	evitando que el subgrafo cambie si el nodo se encuentra más de una vez.
+	"""
+	import random
+
+	# Semilla fija por nodo: el mismo nodo bloqueado siempre da el mismo puzzle
+	rng = random.Random(hash(nodo_bloqueado) & 0xFFFF)
+
 	inicio   = f"{nodo_bloqueado}_S"
 	objetivo = f"{nodo_bloqueado}_G"
-	p1       = f"{nodo_bloqueado}_P1"
-	p2       = f"{nodo_bloqueado}_P2"
 
-	base           = ord(nodo_bloqueado[0]) - ord("A") + 1
-	costo_directo  = 3 + (base % 3)
-	costo_atajo_1  = 1 + (base % 2)
-	costo_atajo_2  = 2
+	# Número aleatorio de nodos intermedios: entre 2 y 4
+	n_intermedios = rng.randint(2, 4)
+	intermedios   = [f"{nodo_bloqueado}_N{i+1}" for i in range(n_intermedios)]
 
-	grafo_local = {
-		inicio:   [(p1, costo_atajo_1), (p2, costo_directo)],
-		p1:       [(objetivo, costo_atajo_2)],
-		p2:       [(objetivo, 2 + (base % 2))],
-		objetivo: [],
-	}
+	# Todos los nodos del subgrafo en orden de inicio a objetivo
+	todos = [inicio] + intermedios + [objetivo]
 
-	heuristica = {
-		inicio:   2,
-		p1:       1,
-		p2:       2,
-		objetivo: 0,
-	}
+	# Inicializar grafo vacío
+	grafo_local = {nodo: [] for nodo in todos}
 
-	return grafo_local, inicio, objetivo, heuristica
+	# PASO 1: cadena troncal inicio → N1 → N2 → ... → objetivo
+	# Garantiza que siempre exista al menos un camino completo
+	for i in range(len(todos) - 1):
+		costo = rng.randint(1, 6)
+		grafo_local[todos[i]].append((todos[i + 1], costo))
+
+	# PASO 2: aristas adicionales aleatorias hacia adelante
+	# Saltan al menos 2 posiciones para crear atajos interesantes
+	# (igual que en el grafo global, pero a escala pequeña)
+	for i in range(len(todos) - 1):
+		max_salto = len(todos) - i - 1
+		if max_salto >= 2:
+			# Con probabilidad 0.5 se agrega un atajo desde este nodo
+			if rng.random() < 0.5:
+				salto   = rng.randint(2, max_salto)
+				destino = todos[i + salto]
+				# Evitar duplicados
+				if destino not in [v for v, _ in grafo_local[todos[i]]]:
+					costo = rng.randint(1, 6)
+					grafo_local[todos[i]].append((destino, costo))
+
+	return grafo_local, inicio, objetivo
+
+
+def _calcular_heuristica(grafo_local, objetivo):
+	"""
+	Heurística: Distancia de aristas mínimas hasta el objetivo
+	            multiplicada por el costo mínimo de arista del subgrafo.
+
+	Nombre formal: heurística de costo mínimo acumulado por saltos (o
+	               'uniform-cost lower bound'), una variante de la
+	               heurística de distancia de saltos ponderada.
+
+	Fórmula aplicada:
+	    h(n) = saltos_minimos(n → objetivo) × costo_minimo_arista
+
+	Dónde:
+	    - saltos_minimos: número de aristas en el camino más corto
+	      (en cantidad de pasos, sin considerar costos) desde n
+	      hasta el objetivo. Se obtiene con un BFS inverso desde
+	      el objetivo recorriendo el grafo con aristas invertidas.
+	    - costo_minimo_arista: el menor costo encontrado entre todas
+	      las aristas del subgrafo. Es el "piso" del costo por paso.
+
+	Por qué es admisible:
+	    El costo real de cualquier camino desde n hasta el objetivo
+	    nunca puede ser menor que (saltos necesarios × costo mínimo
+	    por salto). Al usar el mínimo nunca sobreestimamos, lo que
+	    garantiza que A* encuentre siempre la solución óptima.
+
+	Por qué es mejor que la heurística fija anterior:
+	    La anterior asignaba valores fijos (2, 1, 2, 0) sin relación
+	    con la estructura real del grafo. Esta se calcula a partir
+	    del grafo generado, por lo que se adapta a cualquier subgrafo
+	    sin importar sus costos o su topología.
+	"""
+	# --- Paso 1: encontrar el costo mínimo de arista en todo el subgrafo ---
+	costo_minimo = float("inf")
+	for vecinos in grafo_local.values():
+		for (_, costo) in vecinos:
+			if costo < costo_minimo:
+				costo_minimo = costo
+	# Si el grafo no tiene aristas (solo el nodo objetivo), el costo mínimo es 0
+	if costo_minimo == float("inf"):
+		costo_minimo = 0
+
+	# --- Paso 2: BFS inverso desde el objetivo para contar saltos mínimos ---
+	# Construimos el grafo con aristas invertidas para recorrerlo
+	# "hacia atrás" desde el objetivo
+	grafo_inv = {}
+	for u, vecinos in grafo_local.items():
+		for (v, _) in vecinos:
+			grafo_inv.setdefault(v, []).append(u)
+
+	saltos = {objetivo: 0}
+	cola   = deque([objetivo])
+	while cola:
+		nodo = cola.popleft()
+		for predecesor in grafo_inv.get(nodo, []):
+			if predecesor not in saltos:
+				saltos[predecesor] = saltos[nodo] + 1
+				cola.append(predecesor)
+
+	# --- Paso 3: h(n) = saltos_minimos(n) × costo_minimo ---
+	# Los nodos sin camino al objetivo reciben infinito para que A*
+	# no los considere como rutas válidas
+	heuristica = {}
+	for nodo in grafo_local:
+		if nodo in saltos:
+			heuristica[nodo] = saltos[nodo] * costo_minimo
+		else:
+			heuristica[nodo] = float("inf")
+
+	return heuristica
 
 
 def astar_pasos(nodo_bloqueado):
@@ -61,7 +170,9 @@ def astar_pasos(nodo_bloqueado):
 	  - "local_descubrir": se añade un vecino a la frontera local
 	  - "local_fin"      : resultado final (exito/fracaso) con estadísticas
 	"""
-	grafo_local, inicio, objetivo, heuristica = _crear_subproblema(nodo_bloqueado)
+	grafo_local, inicio, objetivo = _crear_subproblema(nodo_bloqueado)
+	# Calcular la heurística a partir de la estructura real del subgrafo
+	heuristica = _calcular_heuristica(grafo_local, objetivo)
 	inicio_tiempo = time.time()
 
 	# Primer yield: metadatos para que la UI dibuje el subgrafo inmediatamente
