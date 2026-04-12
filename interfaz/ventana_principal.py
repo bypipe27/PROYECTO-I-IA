@@ -1,367 +1,460 @@
-from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtCore import QTimer
-from PyQt5.QtGui import QFont, QIcon
+import signal
+
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
-	QHBoxLayout,
-	QComboBox,
-	QLabel,
-	QMainWindow,
-	QPushButton,
-	QSplitter,
-	QTextEdit,
-	QVBoxLayout,
-	QWidget,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QSplitter,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+    QFrame,
 )
 
-from interfaz.panel_grafo import PanelGrafo
+from interfaz.panel_grafo import PanelGrafo, PanelSubgrafo
 from logica.busqueda import bfs_pasos, dfs_pasos
 from logica.grafos import generar_bloqueados, generar_grafo_dag
 
 
 class VentanaPrincipal(QMainWindow):
-	def __init__(self):
-		super().__init__()
-		self.setWindowTitle("Escape Room Solver")
-		self.setMinimumSize(950, 700)
-		
-		self._grafo = {}
-		self._inicio = ""
-		self._objetivo = ""
-		self._bloqueados = set()
-		self._ultimo_resultado = None
-		self._generador_busqueda = None
-		self._nodo_actual = None
-		self._nodos_visitados = set()
-		self._resueltos_local = 0
-		self._fallidos_local = 0
-		self._expandidos_local_total = 0
-		self._costo_local_total = 0
-		self._timer_busqueda = QTimer(self)
-		self._timer_busqueda.timeout.connect(self._avanzar_busqueda)
-		
-		self._construir_ui()
-		self._aplicar_estilos()
-		self._preparar_partida()
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Escape Room Solver")
+        self.setMinimumSize(1100, 720)
 
-	def _construir_ui(self):
-		central = QWidget()
-		self.setCentralWidget(central)
+        # Estado de la búsqueda
+        self._grafo               = {}
+        self._inicio              = ""
+        self._objetivo            = ""
+        self._bloqueados          = set()
+        self._ultimo_resultado    = None
+        self._generador_busqueda  = None
+        self._nodo_actual         = None
+        self._nodos_visitados     = set()
 
-		root = QVBoxLayout(central)
-		root.setContentsMargins(12, 12, 12, 12)
-		root.setSpacing(10)
+        # Estadísticas
+        self._expandidos_global   = 0
+        self._profundidad_global  = 0
+        self._resueltos_local     = 0
+        self._fallidos_local      = 0
+        self._expandidos_local    = 0
+        self._costo_local         = 0
 
-		# Barra superior con título y controles
-		barra = QHBoxLayout()
-		barra.setContentsMargins(0, 0, 0, 0)
-		barra.setSpacing(16)
-		
-		titulo = QLabel("Escape Room Solver")
-		titulo_font = QFont("Ubuntu", 18, QFont.Bold)
-		titulo.setFont(titulo_font)
-		barra.addWidget(titulo)
-		barra.addStretch()
+        self._timer_busqueda = QTimer(self)
+        self._timer_busqueda.timeout.connect(self._avanzar_busqueda)
 
-		self._selector_algoritmo = QComboBox()
-		self._selector_algoritmo.addItem("Selecciona algoritmo...", None)
-		self._selector_algoritmo.addItem("Amplitud (BFS)", "bfs")
-		self._selector_algoritmo.addItem("Profundidad (DFS)", "dfs")
-		self._selector_algoritmo.currentIndexChanged.connect(self._actualizar_estado_inicio)
-		self._selector_algoritmo.setMinimumWidth(200)
-		barra.addWidget(self._selector_algoritmo)
+        self._construir_ui()
+        self._aplicar_estilos()
+        self._preparar_partida()
 
-		self._btn_start = QPushButton("Iniciar")
-		self._btn_start.clicked.connect(self._ejecutar_busqueda)
-		self._btn_start.setEnabled(False)
-		self._btn_start.setMinimumWidth(90)
-		barra.addWidget(self._btn_start)
+    # -----------------------------------------------------------------------
+    # Construcción de la UI
+    # -----------------------------------------------------------------------
 
-		root.addLayout(barra)
+    def _construir_ui(self):
+        central = QWidget()
+        self.setCentralWidget(central)
 
-		# Divisor principal (grafo + panel derecho) - obtiene más espacio
-		splitter_superior = QSplitter(Qt.Orientation.Horizontal)
-		splitter_superior.setChildrenCollapsible(False)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(12, 10, 12, 10)
+        root.setSpacing(8)
 
-		self._panel_grafo = PanelGrafo("Grafo de búsqueda")
-		splitter_superior.addWidget(self._panel_grafo)
+        # ── Barra superior ──────────────────────────────────────────────────
+        barra = QHBoxLayout()
+        barra.setSpacing(12)
 
-		# Panel derecho mejorado
-		panel_derecho = QWidget()
-		panel_layout = QVBoxLayout(panel_derecho)
-		panel_layout.setContentsMargins(12, 12, 12, 12)
-		panel_layout.setSpacing(8)
+        titulo = QLabel("Escape Room Solver")
+        titulo.setFont(QFont("Ubuntu", 16, QFont.Bold))
+        barra.addWidget(titulo)
+        barra.addStretch()
 
-		# Información
-		info_label = QLabel("Información")
-		info_font = QFont("Ubuntu", 11, QFont.Bold)
-		info_label.setFont(info_font)
-		panel_layout.addWidget(info_label)
-		
-		self._info_texto = QLabel("")
-		self._info_texto.setWordWrap(True)
-		self._info_texto.setAlignment(Qt.AlignmentFlag.AlignTop)
-		info_font_small = QFont("Ubuntu", 9)
-		self._info_texto.setFont(info_font_small)
-		panel_layout.addWidget(self._info_texto)
+        self._selector_algoritmo = QComboBox()
+        self._selector_algoritmo.addItem("Selecciona algoritmo...", None)
+        self._selector_algoritmo.addItem("Amplitud (BFS)", "bfs")
+        self._selector_algoritmo.addItem("Profundidad (DFS)", "dfs")
+        self._selector_algoritmo.currentIndexChanged.connect(self._actualizar_estado_inicio)
+        self._selector_algoritmo.setMinimumWidth(190)
+        barra.addWidget(self._selector_algoritmo)
 
-		local_label = QLabel("Puzzle local (A*)")
-		local_label.setFont(info_font)
-		panel_layout.addWidget(local_label)
+        self._btn_start = QPushButton("▶  Iniciar")
+        self._btn_start.clicked.connect(self._ejecutar_busqueda)
+        self._btn_start.setEnabled(False)
+        self._btn_start.setMinimumWidth(100)
+        barra.addWidget(self._btn_start)
 
-		self._local_info_texto = QLabel("Esperando nodo bloqueado...")
-		self._local_info_texto.setWordWrap(True)
-		self._local_info_texto.setAlignment(Qt.AlignmentFlag.AlignTop)
-		self._local_info_texto.setFont(info_font_small)
-		panel_layout.addWidget(self._local_info_texto)
+        self._btn_reset = QPushButton("↺  Nuevo grafo")
+        self._btn_reset.clicked.connect(self._preparar_partida)
+        self._btn_reset.setMinimumWidth(110)
+        barra.addWidget(self._btn_reset)
 
-		self._consola_local = QTextEdit()
-		self._consola_local.setReadOnly(True)
-		self._consola_local.setPlaceholderText("Eventos del subproblema A*...")
-		self._consola_local.setMinimumHeight(170)
-		self._consola_local.setFont(QFont("Monospace", 9))
-		panel_layout.addWidget(self._consola_local)
-		
-		panel_layout.addStretch()
-		splitter_superior.addWidget(panel_derecho)
-		splitter_superior.setSizes([650, 300])
+        root.addLayout(barra)
 
-		root.addWidget(splitter_superior, 1)
+        # ── Splitter principal: izquierda (grafo global) | derecha (puzzle) ─
+        splitter_h = QSplitter(Qt.Orientation.Horizontal)
+        splitter_h.setChildrenCollapsible(False)
 
-		# Consola de mensajes
-		consola_label = QLabel("Registro de ejecución")
-		consola_font = QFont("Ubuntu", 11, QFont.Bold)
-		consola_label.setFont(consola_font)
-		root.addWidget(consola_label)
-		
-		self._consola = QTextEdit()
-		self._consola.setReadOnly(True)
-		self._consola.setMinimumHeight(140)
-		self._consola.setPlaceholderText("Mensajes de ejecución...")
-		consola_edit_font = QFont("Monospace", 9)
-		self._consola.setFont(consola_edit_font)
+        # Panel izquierdo: grafo global
+        izq = QWidget()
+        izq_layout = QVBoxLayout(izq)
+        izq_layout.setContentsMargins(0, 0, 0, 0)
+        izq_layout.setSpacing(6)
 
-		root.addWidget(self._consola)
+        self._panel_grafo = PanelGrafo("Grafo Global — Búsqueda no informada")
+        izq_layout.addWidget(self._panel_grafo)
 
-	def _preparar_partida(self):
-		self._consola.clear()
-		self._consola_local.clear()
-		self._ultimo_resultado = None
-		self._resueltos_local = 0
-		self._fallidos_local = 0
-		self._expandidos_local_total = 0
-		self._costo_local_total = 0
-		self._grafo, self._inicio, self._objetivo = generar_grafo_dag(n=11, densidad=0.3)
-		self._bloqueados = generar_bloqueados(self._grafo, self._inicio, self._objetivo)
-		self._panel_grafo.mostrar_vacio()
+        # Consola global debajo del grafo
+        lbl_consola_g = QLabel("Registro global")
+        lbl_consola_g.setFont(QFont("Ubuntu", 10, QFont.Bold))
+        izq_layout.addWidget(lbl_consola_g)
 
-		self._actualizar_info()
-		self._log("Selecciona un algoritmo para comenzar.")
-		self._actualizar_estado_inicio()
-	
-	def _actualizar_info(self):
-		info = f"""<b>Estado:</b> Preparado<br>
-		<b>Nodos:</b> {len(self._grafo)}<br>
-		<b>Inicio:</b> {self._inicio}<br>
-		<b>Objetivo:</b> {self._objetivo}<br>
-		<b>Bloqueados activos:</b> {len(self._bloqueados)}"""
-		self._info_texto.setText(info)
+        self._consola = QTextEdit()
+        self._consola.setReadOnly(True)
+        self._consola.setMaximumHeight(130)
+        self._consola.setFont(QFont("Monospace", 8))
+        self._consola.setPlaceholderText("Eventos de la búsqueda global...")
+        izq_layout.addWidget(self._consola)
 
-		local_info = f"""<b>Resueltos:</b> {self._resueltos_local}<br>
-		<b>Fallidos:</b> {self._fallidos_local}<br>
-		<b>Expandidos local:</b> {self._expandidos_local_total}<br>
-		<b>Costo local total:</b> {self._costo_local_total}"""
-		self._local_info_texto.setText(local_info)
+        splitter_h.addWidget(izq)
 
-	def _actualizar_estado_inicio(self):
-		algoritmo = self._selector_algoritmo.currentData()
-		self._btn_start.setEnabled(algoritmo is not None and not self._timer_busqueda.isActive())
+        # Panel derecho: subgrafo A* + estadísticas + consola local
+        der = QWidget()
+        der_layout = QVBoxLayout(der)
+        der_layout.setContentsMargins(0, 0, 0, 0)
+        der_layout.setSpacing(6)
 
-	def _aplicar_estilos(self):
-		"""Aplica estilos modernos y minimalistas a toda la interfaz."""
-		paleta = """
-		QMainWindow {
-			background-color: #FFFFFF;
-		}
-		QPushButton {
-			background-color: #2196F3;
-			color: white;
-			border: none;
-			padding: 8px 16px;
-			border-radius: 4px;
-			font-weight: bold;
-			font-family: "Ubuntu";
-		}
-		QPushButton:hover {
-			background-color: #1976D2;
-		}
-		QPushButton:pressed {
-			background-color: #1565C0;
-		}
-		QPushButton:disabled {
-			background-color: #BDBDBD;
-		}
-		QComboBox {
-			background-color: #F5F5F5;
-			color: #212121;
-			border: 1px solid #E0E0E0;
-			padding: 6px;
-			border-radius: 4px;
-			font-family: "Ubuntu";
-		}
-		QComboBox:hover {
-			border: 1px solid #2196F3;
-		}
-		QTextEdit {
-			background-color: #FAFAFA;
-			color: #212121;
-			border: 1px solid #E0E0E0;
-			border-radius: 4px;
-			padding: 8px;
-			font-family: "Monospace";
-		}
-		QLabel {
-			color: #212121;
-			font-family: "Ubuntu";
-		}
-		QSplitter::handle {
-			background-color: #E0E0E0;
-		}
-		"""
-		self.setStyleSheet(paleta)
+        # Sub-panel del subgrafo A*
+        self._panel_subgrafo = PanelSubgrafo()
+        der_layout.addWidget(self._panel_subgrafo, stretch=3)
 
-	def _ejecutar_busqueda(self):
-		if self._timer_busqueda.isActive():
-			return
+        # Estadísticas
+        stats_frame = self._construir_stats()
+        der_layout.addWidget(stats_frame)
 
-		algoritmo = self._selector_algoritmo.currentData()
-		if algoritmo not in {"bfs", "dfs"}:
-			self._log("⚠️ Elige BFS o DFS antes de iniciar.")
-			return
+        # Consola local A*
+        lbl_consola_l = QLabel("Registro A* (subproblema)")
+        lbl_consola_l.setFont(QFont("Ubuntu", 10, QFont.Bold))
+        der_layout.addWidget(lbl_consola_l)
 
-		self._consola.clear()
-		self._consola_local.clear()
-		self._panel_grafo.cargar_grafo(self._grafo, self._inicio, self._objetivo, self._bloqueados)
-		self._generador_busqueda = bfs_pasos(self._grafo, self._inicio, self._objetivo, self._bloqueados)
-		if algoritmo == "dfs":
-			self._generador_busqueda = dfs_pasos(self._grafo, self._inicio, self._objetivo, self._bloqueados)
+        self._consola_local = QTextEdit()
+        self._consola_local.setReadOnly(True)
+        self._consola_local.setMaximumHeight(120)
+        self._consola_local.setFont(QFont("Monospace", 8))
+        self._consola_local.setPlaceholderText("Eventos del subproblema A*...")
+        der_layout.addWidget(self._consola_local)
 
-		self._nodo_actual = None
-		self._nodos_visitados = set()
-		self._ultimo_resultado = None
-		self._resueltos_local = 0
-		self._fallidos_local = 0
-		self._expandidos_local_total = 0
-		self._costo_local_total = 0
-		self._actualizar_info()
+        splitter_h.addWidget(der)
+        splitter_h.setSizes([620, 400])
 
-		nombre = "AMPLITUD (BFS)" if algoritmo == "bfs" else "PROFUNDIDAD (DFS)"
+        root.addWidget(splitter_h, stretch=1)
 
-		self._log(f"🔍 Iniciando búsqueda: {nombre}")
-		self._btn_start.setEnabled(False)
-		self._selector_algoritmo.setEnabled(False)
-		self._timer_busqueda.start(650)
+    def _construir_stats(self) -> QFrame:
+        """Cuadro de estadísticas con dos columnas: Global | Local."""
+        frame = QFrame()
+        frame.setFrameShape(QFrame.StyledPanel)
+        frame.setStyleSheet(
+            "QFrame { background:#F5F5F5; border:1px solid #E0E0E0;"
+            " border-radius:6px; padding:4px; }"
+        )
 
-	def _avanzar_busqueda(self):
-		if self._generador_busqueda is None:
-			self._detener_busqueda()
-			return
+        layout = QHBoxLayout(frame)
+        layout.setSpacing(16)
 
-		try:
-			try:
-				paso = next(self._generador_busqueda)
-			except StopIteration:
-				self._detener_busqueda()
-				return
+        # Columna Global
+        col_g = QVBoxLayout()
+        lbl_g = QLabel("Global Search")
+        lbl_g.setFont(QFont("Ubuntu", 9, QFont.Bold))
+        col_g.addWidget(lbl_g)
 
-			tipo = paso["tipo"]
+        self._lbl_exp_g = QLabel("Nodes Expanded: —")
+        self._lbl_exp_g.setFont(QFont("Ubuntu", 8))
+        col_g.addWidget(self._lbl_exp_g)
 
-			if tipo == "expandir":
-				nodo = paso["nodo"]
-				self._marcar_nodo_actual(nodo)
-				self._nodos_visitados.add(nodo)
-				self._panel_grafo.actualizar_nodo(nodo, "actual")
-				self._log(f"→ Expandiendo nodo {nodo}")
-			elif tipo == "descubrir":
-				vecino = paso["vecino"]
-				self._panel_grafo.actualizar_nodo(vecino, "frontera")
-				self._log(f"◆ Nodo descubierto: {vecino}")
-			elif tipo == "bloqueado":
-				vecino = paso["vecino"]
-				self._panel_grafo.actualizar_nodo(vecino, "bloqueado")
-				self._log(f"✗ Bloqueado: {vecino}")
-			elif tipo == "subproblema_inicio":
-				vecino = paso["vecino"]
-				self._log(f"🧩 Iniciando A* para desbloquear {vecino}")
-				self._log_local(f"Inicio subproblema {vecino}: {paso['inicio_local']} -> {paso['objetivo_local']}")
-			elif tipo == "subproblema_evento":
-				self._log_local(paso["mensaje"])
-			elif tipo == "desbloqueado":
-				vecino = paso["vecino"]
-				resultado_local = paso["resultado_local"]
-				self._panel_grafo.actualizar_nodo(vecino, "desbloqueado")
-				self._resueltos_local += 1
-				self._expandidos_local_total += resultado_local["nodos_expandidos"]
-				self._costo_local_total += resultado_local["costo_total"]
-				self._log(f"🔓 Nodo desbloqueado: {vecino}")
-				self._log_local(f"Resuelto {vecino} | costo={resultado_local['costo_total']} | expandidos={resultado_local['nodos_expandidos']}")
-				self._actualizar_info()
-			elif tipo == "subproblema_fallido":
-				vecino = paso["vecino"]
-				resultado_local = paso["resultado_local"]
-				self._fallidos_local += 1
-				self._log(f"❌ No se pudo desbloquear: {vecino}")
-				self._log_local(f"Falló {vecino} | expandidos={resultado_local['nodos_expandidos']}")
-				self._actualizar_info()
-			elif tipo == "objetivo":
-				camino = paso["camino"]
-				self._log(f"✓ ¡Objetivo encontrado! {paso['nodo']}")
-				self._panel_grafo.marcar_camino(camino)
-			elif tipo == "fin":
-				self._ultimo_resultado = paso
-				self._resueltos_local = paso.get("subproblemas_resueltos", self._resueltos_local)
-				self._fallidos_local = paso.get("subproblemas_fallidos", self._fallidos_local)
-				self._expandidos_local_total = paso.get("expandidos_local_total", self._expandidos_local_total)
-				self._costo_local_total = paso.get("costo_local_total", self._costo_local_total)
-				if paso["exito"]:
-					camino = paso["camino"] or []
-					self._panel_grafo.marcar_camino(camino)
-					self._log(f"✓ Camino: {' → '.join(camino)}")
-				else:
-					self._log("✗ No se encontró camino al objetivo.")
+        self._lbl_prof_g = QLabel("Depth: —")
+        self._lbl_prof_g.setFont(QFont("Ubuntu", 8))
+        col_g.addWidget(self._lbl_prof_g)
 
-				self._log(f"📊 Nodos expandidos: {paso['nodos_expandidos']}")
-				self._log(f"📏 Profundidad: {paso['profundidad']}")
-				self._log(f"⏱️  Tiempo: {paso['tiempo']:.6f} s")
-				self._log(f"🧠 Subproblemas A* resueltos: {self._resueltos_local} | fallidos: {self._fallidos_local}")
-				self._actualizar_info()
-				self._detener_busqueda()
-		except KeyboardInterrupt:
-			self._detener_busqueda()
-		except Exception as e:
-			self._log(f"⚠️  Error durante la búsqueda: {str(e)}")
-			self._detener_busqueda()
+        layout.addLayout(col_g)
 
-	def _marcar_nodo_actual(self, nodo):
-		if self._nodo_actual and self._nodo_actual != nodo:
-			if self._nodo_actual == self._inicio:
-				self._panel_grafo.actualizar_nodo(self._nodo_actual, "inicio")
-			elif self._nodo_actual == self._objetivo:
-				self._panel_grafo.actualizar_nodo(self._nodo_actual, "objetivo")
-			elif self._nodo_actual in self._bloqueados:
-				self._panel_grafo.actualizar_nodo(self._nodo_actual, "bloqueado")
-			else:
-				self._panel_grafo.actualizar_nodo(self._nodo_actual, "visitado")
-		self._nodo_actual = nodo
+        # Separador
+        sep = QFrame()
+        sep.setFrameShape(QFrame.VLine)
+        sep.setStyleSheet("color:#BDBDBD;")
+        layout.addWidget(sep)
 
-	def _detener_busqueda(self):
-		self._timer_busqueda.stop()
-		self._generador_busqueda = None
-		self._nodo_actual = None
-		self._selector_algoritmo.setEnabled(True)
-		self._actualizar_estado_inicio()
+        # Columna Local
+        col_l = QVBoxLayout()
+        lbl_l = QLabel("Local Puzzle (A*)")
+        lbl_l.setFont(QFont("Ubuntu", 9, QFont.Bold))
+        col_l.addWidget(lbl_l)
 
-	def _log(self, mensaje: str):
-		self._consola.append(f"> {mensaje}")
+        self._lbl_exp_l = QLabel("Nodes Expanded: —")
+        self._lbl_exp_l.setFont(QFont("Ubuntu", 8))
+        col_l.addWidget(self._lbl_exp_l)
 
-	def _log_local(self, mensaje: str):
-		self._consola_local.append(f"> {mensaje}")
+        self._lbl_cost_l = QLabel("Total Cost: —")
+        self._lbl_cost_l.setFont(QFont("Ubuntu", 8))
+        col_l.addWidget(self._lbl_cost_l)
+
+        self._lbl_resueltos = QLabel("Solved: 0 | Failed: 0")
+        self._lbl_resueltos.setFont(QFont("Ubuntu", 8))
+        col_l.addWidget(self._lbl_resueltos)
+
+        layout.addLayout(col_l)
+        layout.addStretch()
+
+        return frame
+
+    # -----------------------------------------------------------------------
+    # Estilos
+    # -----------------------------------------------------------------------
+
+    def _aplicar_estilos(self):
+        self.setStyleSheet("""
+        QMainWindow { background-color: #FFFFFF; }
+        QPushButton {
+            background-color: #2196F3; color: white; border: none;
+            padding: 7px 14px; border-radius: 4px; font-weight: bold;
+            font-family: 'Ubuntu';
+        }
+        QPushButton:hover   { background-color: #1976D2; }
+        QPushButton:pressed { background-color: #1565C0; }
+        QPushButton:disabled { background-color: #BDBDBD; }
+        QComboBox {
+            background-color: #F5F5F5; color: #212121;
+            border: 1px solid #E0E0E0; padding: 6px;
+            border-radius: 4px; font-family: 'Ubuntu';
+        }
+        QComboBox:hover { border: 1px solid #2196F3; }
+        QTextEdit {
+            background-color: #FAFAFA; color: #212121;
+            border: 1px solid #E0E0E0; border-radius: 4px;
+            padding: 6px; font-family: 'Monospace';
+        }
+        QLabel  { color: #212121; font-family: 'Ubuntu'; }
+        QSplitter::handle { background-color: #E0E0E0; width: 2px; }
+        """)
+
+    # -----------------------------------------------------------------------
+    # Preparar partida
+    # -----------------------------------------------------------------------
+
+    def _preparar_partida(self):
+        if self._timer_busqueda.isActive():
+            self._timer_busqueda.stop()
+            self._generador_busqueda = None
+
+        self._consola.clear()
+        self._consola_local.clear()
+        self._ultimo_resultado    = None
+        self._expandidos_global   = 0
+        self._profundidad_global  = 0
+        self._resueltos_local     = 0
+        self._fallidos_local      = 0
+        self._expandidos_local    = 0
+        self._costo_local         = 0
+
+        self._grafo, self._inicio, self._objetivo = generar_grafo_dag(n=11, densidad=0.3)
+        self._bloqueados = generar_bloqueados(self._grafo, self._inicio, self._objetivo)
+        self._panel_grafo.mostrar_vacio()
+        self._panel_subgrafo.limpiar()
+        self._actualizar_stats()
+
+        self._log(f"Grafo generado | Inicio: {self._inicio} | "
+                  f"Objetivo: {self._objetivo} | "
+                  f"Bloqueados: {sorted(self._bloqueados)}")
+        self._log("Selecciona un algoritmo y presiona Iniciar.")
+        self._actualizar_estado_inicio()
+
+    # -----------------------------------------------------------------------
+    # Control de la búsqueda
+    # -----------------------------------------------------------------------
+
+    def _actualizar_estado_inicio(self):
+        algoritmo = self._selector_algoritmo.currentData()
+        self._btn_start.setEnabled(
+            algoritmo is not None and not self._timer_busqueda.isActive()
+        )
+
+    def _ejecutar_busqueda(self):
+        if self._timer_busqueda.isActive():
+            return
+
+        algoritmo = self._selector_algoritmo.currentData()
+        if algoritmo not in {"bfs", "dfs"}:
+            self._log("⚠️ Elige BFS o DFS antes de iniciar.")
+            return
+
+        self._consola.clear()
+        self._consola_local.clear()
+        self._panel_subgrafo.limpiar()
+        self._panel_grafo.cargar_grafo(
+            self._grafo, self._inicio, self._objetivo, self._bloqueados
+        )
+
+        if algoritmo == "bfs":
+            self._generador_busqueda = bfs_pasos(
+                self._grafo, self._inicio, self._objetivo, self._bloqueados
+            )
+        else:
+            self._generador_busqueda = dfs_pasos(
+                self._grafo, self._inicio, self._objetivo, self._bloqueados
+            )
+
+        self._nodo_actual         = None
+        self._nodos_visitados     = set()
+        self._ultimo_resultado    = None
+        self._expandidos_global   = 0
+        self._profundidad_global  = 0
+        self._resueltos_local     = 0
+        self._fallidos_local      = 0
+        self._expandidos_local    = 0
+        self._costo_local         = 0
+        self._actualizar_stats()
+
+        nombre = "AMPLITUD (BFS)" if algoritmo == "bfs" else "PROFUNDIDAD (DFS)"
+        self._log(f"🔍 Iniciando búsqueda: {nombre}")
+        self._btn_start.setEnabled(False)
+        self._btn_reset.setEnabled(False)
+        self._selector_algoritmo.setEnabled(False)
+        self._timer_busqueda.start(600)
+
+    def _avanzar_busqueda(self):
+        if self._generador_busqueda is None:
+            self._detener_busqueda()
+            return
+
+        try:
+            paso = next(self._generador_busqueda)
+        except StopIteration:
+            self._detener_busqueda()
+            return
+        except Exception as e:
+            self._log(f"⚠️ Error: {e}")
+            self._detener_busqueda()
+            return
+
+        tipo = paso["tipo"]
+
+        if tipo == "expandir":
+            nodo = paso["nodo"]
+            self._expandidos_global += 1
+            self._profundidad_global = max(
+                self._profundidad_global, paso["profundidad"]
+            )
+            self._marcar_nodo_actual(nodo)
+            self._nodos_visitados.add(nodo)
+            self._panel_grafo.actualizar_nodo(nodo, "actual")
+            self._log(f"→ Expandiendo nodo {nodo}")
+            self._actualizar_stats()
+
+        elif tipo == "descubrir":
+            vecino = paso["vecino"]
+            self._panel_grafo.actualizar_nodo(vecino, "disponible")
+            self._log(f"◆ Descubierto: {vecino}")
+
+        elif tipo == "bloqueado":
+            vecino = paso["vecino"]
+            self._panel_grafo.actualizar_nodo(vecino, "bloqueado")
+            self._log(f"🔒 Encontrado nodo bloqueado: {vecino}")
+            self._log(f"   ↳ Iniciando A* para resolver el acertijo de {vecino}...")
+
+        elif tipo == "subproblema_inicio":
+            vecino          = paso["vecino"]
+            resultado_local = paso["resultado_local"]
+            # ── NUEVO: dibujar el subgrafo en el panel derecho ──
+            self._panel_subgrafo.cargar_subgrafo(resultado_local, vecino)
+            self._log_local(
+                f"▶ Subproblema de {vecino}: "
+                f"{paso['inicio_local']} → {paso['objetivo_local']}"
+            )
+
+        elif tipo == "subproblema_evento":
+            self._log_local(f"  {paso['mensaje']}")
+
+        elif tipo == "desbloqueado":
+            vecino          = paso["vecino"]
+            resultado_local = paso["resultado_local"]
+            self._panel_grafo.actualizar_nodo(vecino, "disponible")
+            self._resueltos_local += 1
+            self._expandidos_local += resultado_local["nodos_expandidos"]
+            self._costo_local      += resultado_local["costo_total"]
+            self._log(f"🔓 Nodo {vecino} desbloqueado — "
+                      f"costo={resultado_local['costo_total']} | "
+                      f"expandidos={resultado_local['nodos_expandidos']}")
+            self._log_local(f"✔ Puzzle resuelto → desbloqueando nodo global {vecino}")
+            self._actualizar_stats()
+
+        elif tipo == "subproblema_fallido":
+            vecino          = paso["vecino"]
+            resultado_local = paso["resultado_local"]
+            self._fallidos_local += 1
+            self._log(f"❌ No se pudo desbloquear: {vecino}")
+            self._log_local(f"✘ Puzzle fallido ({vecino}) | "
+                            f"expandidos={resultado_local['nodos_expandidos']}")
+            self._actualizar_stats()
+
+        elif tipo == "objetivo":
+            camino = paso["camino"]
+            self._log(f"🏁 ¡Objetivo {paso['nodo']} alcanzado!")
+            self._panel_grafo.marcar_camino(camino)
+
+        elif tipo == "fin":
+            self._ultimo_resultado = paso
+            if paso["exito"]:
+                camino = paso["camino"] or []
+                self._panel_grafo.marcar_camino(camino)
+                self._log(f"✅ Camino: {' → '.join(camino)}")
+            else:
+                self._log("✗ No se encontró camino al objetivo.")
+
+            self._log(f"📊 Nodos expandidos (global): {paso['nodos_expandidos']}")
+            self._log(f"📏 Profundidad: {paso['profundidad']}")
+            self._log(f"⏱️  Tiempo: {paso['tiempo']:.4f} s")
+            self._log(f"🧩 Subproblemas resueltos: {self._resueltos_local} | "
+                      f"fallidos: {self._fallidos_local}")
+            self._actualizar_stats()
+            self._detener_busqueda()
+
+    # -----------------------------------------------------------------------
+    # Helpers de UI
+    # -----------------------------------------------------------------------
+
+    def _marcar_nodo_actual(self, nodo):
+        if self._nodo_actual and self._nodo_actual != nodo:
+            prev = self._nodo_actual
+            if prev == self._inicio:
+                self._panel_grafo.actualizar_nodo(prev, "inicio")
+            elif prev == self._objetivo:
+                self._panel_grafo.actualizar_nodo(prev, "objetivo")
+            elif prev in self._bloqueados:
+                self._panel_grafo.actualizar_nodo(prev, "bloqueado")
+            else:
+                self._panel_grafo.actualizar_nodo(prev, "disponible")
+        self._nodo_actual = nodo
+
+    def _detener_busqueda(self):
+        self._timer_busqueda.stop()
+        self._generador_busqueda = None
+        self._nodo_actual        = None
+        self._selector_algoritmo.setEnabled(True)
+        self._btn_reset.setEnabled(True)
+        self._actualizar_estado_inicio()
+
+    def _actualizar_stats(self):
+        self._lbl_exp_g.setText(f"Nodes Expanded: {self._expandidos_global}")
+        self._lbl_prof_g.setText(f"Depth: {self._profundidad_global}")
+        self._lbl_exp_l.setText(f"Nodes Expanded: {self._expandidos_local}")
+        self._lbl_cost_l.setText(f"Total Cost: {self._costo_local}")
+        self._lbl_resueltos.setText(
+            f"Solved: {self._resueltos_local} | Failed: {self._fallidos_local}"
+        )
+
+    def _log(self, mensaje: str):
+        self._consola.append(f"> {mensaje}")
+
+    def _log_local(self, mensaje: str):
+        self._consola_local.append(f"> {mensaje}")
