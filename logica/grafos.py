@@ -66,44 +66,9 @@ def generar_bloqueados(grafo, inicio, objetivo, max_bloqueados=5):
     
     return bloqueados
 
-# =========================
-# 3. ANÁLISIS DEL GRAFO
-# # =========================
-# def analizar_grafo(grafo):
-#     """
-#     Analiza propiedades estructurales del grafo
-#     """
-#     print("\n=== ANÁLISIS DEL GRAFO ===")
-    
-#     # In-degree (cuántas aristas llegan)
-#     in_degree = {nodo: 0 for nodo in grafo}
-#     for origen in grafo:
-#         for destino in grafo[origen]:
-#             in_degree[destino] += 1
-    
-#     # Out-degree (cuántas aristas salen)
-#     out_degree = {nodo: len(vecinos) for nodo, vecinos in grafo.items()}
-    
-#     # Nodos fuente (sin predecesores)
-#     fuentes = [n for n, deg in in_degree.items() if deg == 0]
-    
-#     # Nodos sumidero (sin sucesores)
-#     sumideros = [n for n, deg in out_degree.items() if deg == 0]
-    
-#     # Nodos de alto tráfico (muchos predecesores)
-#     alto_trafico = sorted(in_degree.items(), key=lambda x: x[1], reverse=True)[:3]
-    
-#     print(f"Nodos fuente (sin predecesores): {fuentes}")
-#     print(f"Nodos sumidero (sin sucesores): {sumideros}")
-#     print(f"Nodos con más tráfico entrante: {alto_trafico}")
-    
-#     # Contar aristas totales
-#     total_aristas = sum(len(vecinos) for vecinos in grafo.values())
-#     print(f"Total de aristas: {total_aristas}")
-#     print(f"Densidad promedio: {total_aristas / len(grafo):.2f} aristas/nodo")
 
 # =========================
-# 4. VISUALIZACIÓN DEL GRAFO
+# 3. VISUALIZACIÓN DEL GRAFO
 # =========================
 def visualizar_grafo(grafo, bloqueados=None, camino=None):
     """
@@ -122,54 +87,3 @@ def visualizar_grafo(grafo, bloqueados=None, camino=None):
         vecinos_str = ", ".join(vecinos) if vecinos else "(sin salida)"
         print(f"{nodo}{decorador} → {vecinos_str}")
 
-# =========================
-# 5. EJECUCIÓN PRINCIPAL
-# =========================
-if __name__ == "__main__":
-    
-    # Generar grafo
-    grafo, inicio, objetivo = generar_grafo_dag(n=11, densidad=0.3)
-    
-    # Generar bloqueados
-    bloqueados = generar_bloqueados(grafo, inicio, objetivo)
-    
-    # Mostrar configuración
-    print(f"\n🎯 Inicio: {inicio}")
-    print(f"🏁 Objetivo: {objetivo}")
-    print(f"🚫 Nodos bloqueados: {sorted(bloqueados)}")
-    
-    # Analizar grafo
-    #analizar_grafo(grafo)
-    
-    # Visualizar grafo
-    visualizar_grafo(grafo, bloqueados)
-    
-    from logica.busqueda import bfs
-
-    # Ejecutar BFS
-    print("\n" + "=" * 60)
-    print("EJECUTANDO BFS")
-    print("=" * 60)
-    
-    resultado = bfs(grafo, inicio, objetivo, bloqueados)
-    
-    # Mostrar resultados
-    print("\n" + "=" * 60)
-    print("RESULTADOS")
-    print("=" * 60)
-    
-    if resultado["exito"]:
-        print(f"✅ Camino encontrado: {' → '.join(resultado['camino'])}")
-        print(f"   Longitud del camino: {len(resultado['camino'])} nodos")
-    else:
-        print("❌ No se encontró camino al objetivo")
-    
-    print(f"\n📊 MÉTRICAS:")
-    print(f"   Nodos expandidos: {resultado['nodos_expandidos']}")
-    print(f"   Profundidad máxima alcanzada: {resultado['profundidad']}")
-    print(f"   Tiempo de ejecución: {resultado['tiempo']:.6f} segundos")
-    print(f"   Bloqueados encontrados: {resultado['bloqueados_encontrados']}")
-    
-    # Visualizar el camino encontrado
-    if resultado["exito"]:
-        visualizar_grafo(grafo, bloqueados, resultado["camino"])

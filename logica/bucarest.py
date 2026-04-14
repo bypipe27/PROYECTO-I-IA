@@ -23,7 +23,7 @@ def distancia_euclidiana(ciudad1, ciudad2):
 
 
 def heuristica(ciudad_actual, ciudad_meta, ciudades):
-    return distancia_euclidiana(ciudades[ciudad_actual], ciudades[ciudad_meta])
+    return distancia_euclidiana(ciudades[ciudad_actual], ciudades[ciudad_meta]) 
 
 
 def generar_subproblema_bucarest(clave,ancho=500, alto=320, min_costo=20, max_costo=150):
